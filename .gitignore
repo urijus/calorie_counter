@@ -192,3 +192,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Directory folders
+/data/EduardoPacheco___food_seg103
+data/data_EduardoPacheco___food_seg103_default_0.0.0_34e1208e14bc3595d544fc8c3f3c6673253fd9ef.lock
