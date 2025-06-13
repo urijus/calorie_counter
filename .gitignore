@@ -196,6 +196,7 @@ cython_debug/
 # Directory folders
 /data
 /runs
+/models
 
 # Files
 /config/foodseg103.yaml
