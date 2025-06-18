@@ -5,27 +5,31 @@ set -euo pipefail
 CONFIG_FILE="${CONFIG_FILE:-.train.env}"
 [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
 
-# Defaults (can be overridden by env or CLI)
-MODEL="${MODEL:-yolov8m-seg.pt}" # s, m, l
-EPOCHS="${EPOCHS:-30}"
+MODEL="${MODEL:-yolov8m-seg.pt}" 
+EPOCHS="${EPOCHS:-150}"
+PATIENCE="${PATIENCE:-10}"
 IMG_SIZE="${IMG_SIZE:-640}"
-BATCH="${BATCH:-2}"
-DATASET_YAML_PATH="${DATASET_YAML_PATH:-config/foodseg103.yaml}"
+BATCH="${BATCH:--1}" #-1 is auto batch
 LR0="${LR0:-0.001}"
+LRF="${LRF:-0.1}" # final_lr = lr0 * lrf
+WEIGHT_DECAY="${WEIGHT_DECAY:-0.0005}"
+WARMUP_EPOCHS="${WARMUP_EPOCHS:-3}"
+OPTIMIZER="${OPTIMIZER:-AdamW}"
+AMP="${AMP:-True}"
+DEVICE="${DEVICE:-0}"
 WORKERS="${WORKERS:-4}"
-OPTIMIZER="${OPTIMIZER:-SGD}"
+DATASET_YAML_PATH="${DATASET_YAML_PATH:-config/foodseg103.yaml}"
 PROJECT_ROOT="${PROJECT_ROOT:-runs/foodseg}"
+RESUME="${RESUME:-False}" 
 
 # CLI flags override everything else
-#     Usage examples:
-#         ./train.sh -m yolov8s-seg.pt -e 50
 usage() {
-  echo "Usage: $0 [-m model] [-e epochs] [-i imgsz] 
-  [-b batch] [-y yaml] [-l lr] [-w workers] [-o optimizer]"
+  echo "Usage: $0 [-m model] [-e epochs] [-i imgsz] [-b batch] [-y yaml] \
+[-l lr0] [-w workers] [-o optimizer] [-r resume]"
   exit 1
 }
 
-while getopts ":m:e:i:b:y:l:w:o:" flag; do
+while getopts ":m:e:i:b:y:l:w:o:r" flag; do
   case "${flag}" in
     m) MODEL="$OPTARG" ;;
     e) EPOCHS="$OPTARG" ;;
@@ -35,6 +39,7 @@ while getopts ":m:e:i:b:y:l:w:o:" flag; do
     l) LR0="$OPTARG" ;;
     w) WORKERS="$OPTARG" ;;
     o) OPTIMIZER="$OPTARG" ;;
+    r) RESUME="$OPTARG" ;;
     *) usage ;;
   esac
 done
@@ -42,39 +47,51 @@ done
 # Derive folder names from MODEL
 # yolov8m-seg.pt  ->  yolov8m
 MODEL_TAG="$(basename "$MODEL" | cut -d'-' -f1)"
-NAME="${NAME:-${MODEL_TAG}_food}"                   
+NAME="${NAME:-${MODEL_TAG}_foodseg}"                   
 MODEL_OUT_DIR="models/${MODEL_TAG}"
-
 mkdir -p "$MODEL_OUT_DIR"
 
 # Show final hyper-params
 cat <<EOF
 🔧  Training configuration
-    MODEL : $MODEL
-    EPOCHS     : $EPOCHS
-    IMG_SIZE   : $IMG_SIZE
-    BATCH      : $BATCH
-    LR0        : $LR0
-    WORKERS    : $WORKERS
-    DATASET    : $DATASET_YAML_PATH
-    OPTIMIZER  : $OPTIMIZER
-    OUTPUT DIR : $MODEL_OUT_DIR
+    MODEL         : $MODEL
+    EPOCHS        : $EPOCHS  (patience $PATIENCE)
+    IMG_SIZE      : $IMG_SIZE
+    BATCH         : $BATCH   (auto if -1)
+    OPTIMIZER     : $OPTIMIZER
+      • LR0       : $LR0
+      • LRF       : $LRF
+      • W-decay   : $WEIGHT_DECAY
+    WARMUP_EPOCHS : $WARMUP_EPOCHS
+    AMP           : $AMP
+    DEVICE        : $DEVICE
+    WORKERS       : $WORKERS
+    DATASET       : $DATASET_YAML_PATH
+    OUTPUT DIR    : $MODEL_OUT_DIR
+    RESUME        : $RESUME
 EOF
 
 # Launch training
 yolo segment train \
-     model="$MODEL" \
-     data="$DATASET_YAML_PATH" \
-     imgsz="$IMG_SIZE" \
-     epochs="$EPOCHS" \
-     batch="$BATCH" \
-     workers="$WORKERS" \
-     optimizer="$OPTIMIZER" \
-     lr0="$LR0" \
-     project="$PROJECT_ROOT" \
-     name="$NAME"
+    model="$MODEL" \
+    data="$DATASET_YAML_PATH" \
+    imgsz="$IMG_SIZE" \
+    epochs="$EPOCHS" \
+    patience="$PATIENCE" \
+    batch="$BATCH" \
+    workers="$WORKERS" \
+    optimizer="$OPTIMIZER" \
+    lr0="$LR0" \
+    lrf="$LRF" \
+    weight_decay="$WEIGHT_DECAY" \
+    warmup_epochs="$WARMUP_EPOCHS" \
+    amp="$AMP" \
+    device="$DEVICE" \
+    project="$PROJECT_ROOT" \
+    name="$NAME" \
+    resume="$RESUME"           
 
-# Copy best weight and TorchScript export (optional)
+# Copy best weight and TorchScript export
 BEST_PT="$PROJECT_ROOT/$NAME/weights/best.pt"
 if [[ -f "$BEST_PT" ]]; then
   cp "$BEST_PT" "$MODEL_OUT_DIR/"
@@ -97,3 +114,5 @@ else
 fi
 
 echo "Weights saved to $MODEL_OUT_DIR/"
+
+# To resume training use RESUME=True and point to the folder of the original run.
