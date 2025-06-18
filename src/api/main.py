@@ -4,7 +4,6 @@ This script starts the FastAPI server, loads routes, and configures the server.
 """
 from fastapi import FastAPI
 from src.api.routes import router
-from config.content_based_logger import get_script_logger
 
 
 # Initialize the FastAPI app
