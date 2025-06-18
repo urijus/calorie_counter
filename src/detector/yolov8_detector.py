@@ -18,7 +18,7 @@ def detect_and_segment(image, model, confidence=CONFIDENCE_THRESHOLD):
         boxes  (list[list[float]]): List of [x1, y1, x2, y2] per mask.
     """
     result = model.predict(source=image, save=False, verbose=False)[0]
-    masks_out, labels_out, boxes_out = [], [], []
+    output = []
 
     if result.masks is not None:
         masks   = result.masks.data # Shape [N, H, W]
@@ -30,11 +30,13 @@ def detect_and_segment(image, model, confidence=CONFIDENCE_THRESHOLD):
             if conf < confidence:
                 continue
 
-            masks_out.append(mask.cpu().numpy()) # [H, W] binary mask
-            boxes_out.append(box.cpu().numpy().tolist()) # [x1, y1, x2, y2]
-            labels_out.append(result.names[int(cls_id)])
+            mask_np = mask.cpu().numpy() # [H, W] binary mask
+            box_list = box.cpu().numpy().tolist() # [x1, y1, x2, y2]
+            label_str = result.names[int(cls_id)]
 
-    return masks_out, labels_out, boxes_out
+            output.append((mask_np, label_str, box_list))
+
+    return output
 
 
 if __name__ == "__main__":
@@ -42,7 +44,8 @@ if __name__ == "__main__":
     image_path = "./data/chicken_test.png" 
     image = cv2.imread(image_path)
 
-    masks, labels, boxes = detect_and_segment(image, model)
-    print(f"Detected {len(masks)} objects.")
-    for label, box in zip(labels, boxes):
+    items = detect_and_segment(image, model)
+    print(f"Detected {len(items)} items:")
+
+    for mask, label, box in items:
         print(f"Label: {label}, Box: {box}")

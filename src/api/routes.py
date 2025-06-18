@@ -1,53 +1,82 @@
 """
 This script defines the routes for the Nutritional Facts API.
 """
-from pathlib import Path
-
-import base64
-import cv2
-import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from typing import List, Dict
+import cv2, numpy as np
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from pydantic import BaseModel
 
-from detector.yolov8_detector import detect_and_segment
-from scaling.credit_card_scaler import px_per_cm_from_card
-from scaling.grams_from_mask import grams_from_mask
-from scaling.utils import mask_to_png_b64
-from nutrition.usda_client import macro_totals
+from src.api.main import get_usda_client          
+from src.nutrition.usda_client import USDAClient
+from src.detector.yolov8_detector import detect_and_segment
+from src.scaling.credit_card_scaler import px_per_cm_from_card
+from src.scaling.grams_from_mask import grams_from_items
+from src.scaling.utils import mask_to_png_b64
+from src.scaling.densities import DENSITY_TABLE             
 
-
-app = FastAPI(title="Calorie Counter API")
+router = APIRouter()
 
 class MaskOut(BaseModel):
     label: str
     grams: float
-    box:   list[float]  # [x1,y1,x2,y2]
-    mask:  str # base64 PNG
+    box:   List[float]
+    mask:  str          
+
 
 class PredictOut(BaseModel):
-    items: list[MaskOut]
-    totals: dict # kcal, protein, fat, carb
+    items: List[MaskOut]
+    totals: Dict[str, float]   # kcal, protein, fat, carb
 
-@app.post("/predict", response_model=PredictOut)
-async def predict(file: UploadFile = File(...)):
+
+@router.post("/predict", response_model=PredictOut)
+async def predict(
+    file: UploadFile = File(...),
+    usda: USDAClient = Depends(get_usda_client) 
+):
     if file.content_type not in ("image/jpeg", "image/png"):
-        raise HTTPException(400, "Upload a JPEG or PNG.")
+        raise HTTPException(400, "Upload a JPEG or PNG")
 
     img_bytes = await file.read()
     bgr = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
-
     if bgr is None:
         raise HTTPException(415, "Could not decode image")
 
-    scale = px_per_cm_from_card(bgr) or 1.0
-    items = detect_and_segment(bgr)
+    scale  = px_per_cm_from_card(bgr) or 1.0
+    items  = detect_and_segment(bgr) # can have more than one same label
+    grams_per_label = grams_from_items(items, scale, DENSITY_TABLE) # unique keys
+    by_label: dict[str, dict] = {} # label -> dict(mask, box, grams)
 
-    outputs, macros_in = [], []
     for mask, label, box in items:
-        grams = grams_from_mask(mask, label, scale)
-        outputs.append(MaskOut(label=label, grams=grams, box=box.tolist(),
-                               mask=mask_to_png_b64(mask)))
-        macros_in.append((label, grams))
+        if label not in by_label:
+            by_label[label] = {
+                "grams": grams_per_label[label],  
+                "masks": [mask],                   
+                "boxes": [box]
+            }
+        else:
+            by_label[label]["masks"].append(mask)
+            by_label[label]["boxes"].append(box)
 
-    totals = macro_totals(macros_in)
+    outputs: list[MaskOut] = []
+    totals  = {"kcal": 0.0, "protein": 0.0, "fat": 0.0, "carb": 0.0}
+
+    for label, info in by_label.items():
+        g = info["grams"]                      
+        facts100 = usda.get_nutritional_facts(label) # per 100g
+        scaled   = {k: v * g / 100.0 for k, v in facts100.items()}
+
+        for k in totals:
+            totals[k] += scaled.get(k, 0.0)
+
+        outputs.append(
+            MaskOut(
+                label=label,
+                grams=round(g, 2),
+                box=box=[[round(v, 1) for v in box] for box in info["boxes"]],
+                mask=[mask_to_png_b64(mask) for mask in info["masks"]],
+                nutrition=scaled              
+            )
+        )
+
+    totals = {nutrient: round(quantity, 2) for nutrient, quantity in totals.items()}
     return PredictOut(items=outputs, totals=totals)
