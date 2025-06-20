@@ -6,7 +6,7 @@ import cv2, numpy as np
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from pydantic import BaseModel
 
-from src.api.main import get_usda_client          
+from src.api.dependencies import get_usda_client, get_detector          
 from src.nutrition.usda_client import USDAClient
 from src.detector.yolov8_detector import detect_and_segment
 from src.scaling.credit_card_scaler import px_per_cm_from_card
@@ -19,8 +19,8 @@ router = APIRouter()
 class MaskOut(BaseModel):
     label: str
     grams: float
-    box:   List[float]
-    mask:  str          
+    boxes: List[List[float]]   
+    masks: List[str]                
 
 
 class PredictOut(BaseModel):
@@ -31,7 +31,8 @@ class PredictOut(BaseModel):
 @router.post("/predict", response_model=PredictOut)
 async def predict(
     file: UploadFile = File(...),
-    usda: USDAClient = Depends(get_usda_client) 
+    usda: USDAClient = Depends(get_usda_client), 
+    model = Depends(get_detector)  
 ):
     if file.content_type not in ("image/jpeg", "image/png"):
         raise HTTPException(400, "Upload a JPEG or PNG")
@@ -42,7 +43,7 @@ async def predict(
         raise HTTPException(415, "Could not decode image")
 
     scale  = px_per_cm_from_card(bgr) or 1.0
-    items  = detect_and_segment(bgr) # can have more than one same label
+    items  = detect_and_segment(bgr, model) # can have more than one same label
     grams_per_label = grams_from_items(items, scale, DENSITY_TABLE) # unique keys
     by_label: dict[str, dict] = {} # label -> dict(mask, box, grams)
 
@@ -61,7 +62,7 @@ async def predict(
     totals  = {"kcal": 0.0, "protein": 0.0, "fat": 0.0, "carb": 0.0}
 
     for label, info in by_label.items():
-        g = info["grams"]                      
+        g = info["grams"]                     
         facts100 = usda.get_nutritional_facts(label) # per 100g
         scaled   = {k: v * g / 100.0 for k, v in facts100.items()}
 
@@ -72,8 +73,8 @@ async def predict(
             MaskOut(
                 label=label,
                 grams=round(g, 2),
-                box=box=[[round(v, 1) for v in box] for box in info["boxes"]],
-                mask=[mask_to_png_b64(mask) for mask in info["masks"]],
+                boxes=[[round(v, 1) for v in box] for box in info["boxes"]],
+                masks=[mask_to_png_b64(mask) for mask in info["masks"]],
                 nutrition=scaled              
             )
         )
