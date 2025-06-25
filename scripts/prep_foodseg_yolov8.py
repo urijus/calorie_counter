@@ -20,7 +20,7 @@ from config.data_categories import DATA_CATEGORIES
 load_dotenv()
 
 # Constants
-ROOT = Path(os.getenv("DATASET_PATH", "data/FoodSeg103"))
+ROOT = Path(os.getenv("FOODSEG_PATH", "data/FoodSeg103"))
 PNG_COMPRESSION = [
     cv2.IMWRITE_PNG_COMPRESSION,
     int(os.getenv("PNG_COMPRESSION", 3)),
