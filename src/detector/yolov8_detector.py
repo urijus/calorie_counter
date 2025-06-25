@@ -15,9 +15,9 @@ from src.detector.utils import show_masks_on_image
 
 load_dotenv()
 
-SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD'))
-CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD'))
-DEBUG_DIR = os.getenv('DEBUG_DIR')
+SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD'), 0.3)
+CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD'), 0.6)
+DEBUG_DIR = os.getenv('DEBUG_DIR', './debug')
 
 def _solidify_mask(mask: np.ndarray,
                   kernel: int = 8,
