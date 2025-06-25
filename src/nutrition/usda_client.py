@@ -1,12 +1,14 @@
+"""
+This script provides the necessary methods to make requests to the USDA API in order to get
+nutritional facts of food items.
+"""
 import os
 import requests
-import functools
 
 from typing import Dict, Final
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-#from __future__ import annotations
 
 load_dotenv()
 
@@ -48,10 +50,7 @@ class USDAClient:
         if not foods:
             return None
 
-        # choose best candidates per each food item
-        #candidates = [f for f in foods if query.lower() in f["description"].lower()]
-
-        # pick first that contains 'raw' or 'whole'
+        # pick first that contains 'raw' or 'whole' or shortes description
         for f in foods:
             desc = f["description"].lower()
             if "raw" in desc or "whole" in desc:
@@ -70,7 +69,7 @@ class USDAClient:
             params = {"api_key": self.api_key}
             if filtered:
                 params["nutrients"] = ",".join(self.WANTED.keys())
-            r = self.session.get(f"{self.BASE_FOOD}/{fdc_id}", params=params, timeout=10)
+            r = self.session.get(f"{self.BASE_FOOD}/{fdc_id}", params=params, timeout=30)
             if r.status_code == 404 and filtered:
                 return fetch(filtered=False)  
             if r.status_code == 404:          
@@ -103,7 +102,6 @@ class USDAClient:
         Returns zeroes if nothing found.
         """
         fdc_id = self._best_fdc_id(label)
-        print(f"Best fdcId for '{label}': {fdc_id}")
         if fdc_id is None:
             return {v: 0.0 for v in self.WANTED.values()}
         return self._macros_by_id(fdc_id)
@@ -111,6 +109,5 @@ class USDAClient:
 if __name__ == "__main__":
     api_key = os.getenv("USDA_API_KEY")
     client = USDAClient(api_key)
- 
     print(client.get_nutritional_facts("peanut"))
 
