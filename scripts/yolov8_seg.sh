@@ -5,11 +5,11 @@ set -euo pipefail
 CONFIG_FILE="${CONFIG_FILE:-.train.env}"
 [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
 
-MODEL="${MODEL:-yolov8m-seg.pt}" 
-EPOCHS="${EPOCHS:-150}"
+MODEL="${MODEL_SEG:-yolov8m-seg.pt}" 
+EPOCHS="${EPOCHS_SEG:-150}"
 PATIENCE="${PATIENCE:-10}"
-IMG_SIZE="${IMG_SIZE:-640}"
-BATCH="${BATCH:--1}" #-1 is auto batch
+IMG_SIZE="${IMG_SIZE_SEG:-640}"
+BATCH="${BATCH_SEG:--1}" #-1 is auto batch
 LR0="${LR0:-0.001}"
 LRF="${LRF:-0.1}" # final_lr = lr0 * lrf
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.0005}"
@@ -17,7 +17,7 @@ WARMUP_EPOCHS="${WARMUP_EPOCHS:-3}"
 OPTIMIZER="${OPTIMIZER:-AdamW}"
 AMP="${AMP:-True}"
 DEVICE="${DEVICE:-0}"
-WORKERS="${WORKERS:-4}"
+WORKERS="${WORKERS_SEG:-4}"
 DATASET_YAML_PATH="${DATASET_YAML_PATH:-config/foodseg103.yaml}"
 PROJECT_ROOT="${PROJECT_ROOT:-runs/foodseg}"
 RESUME="${RESUME:-False}" 
@@ -114,5 +114,3 @@ else
 fi
 
 echo "Weights saved to $MODEL_OUT_DIR/"
-
-# To resume training use RESUME=True and point to the folder of the original run.
