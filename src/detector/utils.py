@@ -4,14 +4,13 @@ import cv2
 import numpy as np
 
 
-def show_masks_on_image(save_path, image, items, alpha=0.5):
+def show_masks_on_image(save_path, image, items):
     """
     Overlays masks and boxes on the image and displays it.
     
     Args:
         image (np.ndarray): Original image (BGR format).
         items (list): List of (mask, label, box) tuples.
-        alpha (float): Transparency level for mask overlay.
     """
     if len(image.shape) == 2:
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -20,11 +19,9 @@ def show_masks_on_image(save_path, image, items, alpha=0.5):
     H, W = image.shape[:2]
 
     for mask, label, box in items:
-        # Resize mask if shape doesn't match
         if mask.shape != (H, W):
             mask = cv2.resize(mask.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST)
 
-        # Make sure mask is binary
         mask_bool = mask.astype(bool)
 
         # Generate a random color
