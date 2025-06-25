@@ -17,7 +17,7 @@ load_dotenv()
 
 SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD'), 0.3)
 CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD'), 0.6)
-DEBUG_DIR = os.getenv('DEBUG_DIR', './debug')
+DEBUG_DIR = Path(os.getenv('DEBUG_DIR', './debug'))
 
 def _solidify_mask(mask: np.ndarray,
                   kernel: int = 8,
@@ -61,7 +61,7 @@ def _run_classifier(cls_model, crop: np.ndarray) -> Tuple[str, float]:
 def detect_and_segment(image, 
                        seg_model, 
                        clas_model,
-                       debug_dir: Optional[Path] = Path(DEBUG_DIR),
+                       debug_dir: Optional[Path] = None,
                        seg_confidence: float=SEG_CONFIDENCE,
                        cls_confidence: float=CLS_CONFIDENCE):
     """
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     clas_model = YOLO("./models/food101/best.pt")
     image = cv2.imread("./data/chicken_test.png")
 
-    items = detect_and_segment(image, seg_model, clas_model, )
+    items = detect_and_segment(image, seg_model, clas_model, DEBUG_DIR)
     print(f"Detected {len(items)} items:")
 
     for mask, label, box in items:
