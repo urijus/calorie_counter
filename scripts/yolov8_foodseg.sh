@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Download and preprocess dataset if not present
+python pre_foodseg_yolov8.py
+
 # Read optional configuration file
 CONFIG_FILE="${CONFIG_FILE:-.train.env}"
 [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"

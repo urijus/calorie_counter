@@ -1,22 +1,27 @@
-import numpy as np
+"""
+This script contains the necessary methods to estimate the grams of a certain item from a mask.
+"""
+from functools import reduce
 from typing import Dict, List, Tuple
 from collections import defaultdict
-from functools import reduce
 
-DENSITY_G_CM2 = {"rice": 1.0, "chicken duck": 1.5, "shellfish": 4, "banana": 0.2}
+import numpy as np
+
+from src.scaling.densities import DENSITY_TABLE
+
 
 def grams_from_mask(mask: np.ndarray,
                     label: str,
                     pixels_per_cm: float,
-                    density_map: Dict[str, float] = DENSITY_G_CM2) -> float:
+                    density_map: Dict[str, float] = DENSITY_TABLE) -> float:
     """
-    Args
+    Args:
         mask (np.ndarray) Binary mask (H×W).
         label (str) Class name for the mask.
         pixels_per_cm (float) Scale factor.
         density_map (dict) Mapping {label: grams_per_cm2}.
 
-    Returns
+    Returns:
         grams (float) Estimated weight of the object represented by mask.
     """
     if label not in density_map:
@@ -32,15 +37,15 @@ def grams_from_mask(mask: np.ndarray,
 
 def grams_from_items(items: List[Tuple[np.ndarray, str, list]],
                      pixels_per_cm: float,
-                     density_map: Dict[str, float] = DENSITY_G_CM2
+                     density_map: Dict[str, float] = DENSITY_TABLE
                      ) -> Dict[str, float]:
     """
-    Args
+    Args:
         items (list) The list returned by `detect_and_segment` helper (mask, label, box).
         pixels_per_cm (float) Scale factor.
         density_map (dict) Mapping {label: grams_per_cm2}.
 
-    Returns
+    Returns:
         weights (dict) {label: total_grams}.
     """
     per_label = defaultdict(list)
@@ -63,15 +68,12 @@ if __name__ == "__main__":
     from src.scaling.credit_card_scaler import px_per_cm_from_card
 
     model = YOLO("./models/foodseg/best.pt")
-    image_path = "./data/banana.jpg" 
+    image_path = "./data/last.jpg" 
     image = cv2.imread(image_path)
 
     items = detect_and_segment(image, model)
-    print(items)
     scale = px_per_cm_from_card(image)
-    print(scale)
-    weights = grams_from_items(items, scale, DENSITY_G_CM2)
-    print(weights)
+    weights = grams_from_items(items, scale, DENSITY_TABLE)
 
     from src.detector.utils import show_masks_on_image
     show_masks_on_image("output.png", image, items)

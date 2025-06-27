@@ -91,41 +91,41 @@ cat <<EOF
     RESUME    : $RESUME
 EOF
 
-# # Launch training
-# yolo classify train \
-#      model="$MODEL" \
-#      data="$DATA_YAML" \
-#      imgsz="$IMG_SIZE" \
-#      epochs="$EPOCHS" \
-#      patience="$PATIENCE" \
-#      batch="$BATCH" \
-#      workers="$WORKERS" \
-#      optimizer="$OPTIMIZER" \
-#      lr0="$LR0" \
-#      weight_decay="$WEIGHT_DECAY" \
-#      amp="$AMP" \
-#      device="$DEVICE" \
-#      project="$PROJECT_ROOT" \
-#      name="$NAME" \
-#      resume="$RESUME"
+# Launch training
+yolo classify train \
+     model="$MODEL" \
+     data="$DATA_YAML" \
+     imgsz="$IMG_SIZE" \
+     epochs="$EPOCHS" \
+     patience="$PATIENCE" \
+     batch="$BATCH" \
+     workers="$WORKERS" \
+     optimizer="$OPTIMIZER" \
+     lr0="$LR0" \
+     weight_decay="$WEIGHT_DECAY" \
+     amp="$AMP" \
+     device="$DEVICE" \
+     project="$PROJECT_ROOT" \
+     name="$NAME" \
+     resume="$RESUME"
 
-# # Copy best weight and TorchScript export
-# BEST_PT="$PROJECT_ROOT/$NAME/weights/best.pt"
-# if [[ -f "$BEST_PT" ]]; then
-#   cp "$BEST_PT" "$MODEL_OUT_DIR/"
-# else
-#   echo "No best.pt found at $BEST_PT – training may have failed." >&2
-#   exit 1
-# fi
+# Copy best weight and TorchScript export
+BEST_PT="$PROJECT_ROOT/$NAME/weights/best.pt"
+if [[ -f "$BEST_PT" ]]; then
+  cp "$BEST_PT" "$MODEL_OUT_DIR/"
+else
+  echo "No best.pt found at $BEST_PT – training may have failed." >&2
+  exit 1
+fi
 
-# # Export to TorchScript format
-# EXPORT_DIR=$(mktemp -d)
-# yolo export model="$BEST_PT" format=torchscript project="$EXPORT_DIR" name=temp
-# TS_FILE="$EXPORT_DIR/temp/best.torchscript"
+# Export to TorchScript format
+EXPORT_DIR=$(mktemp -d)
+yolo export model="$BEST_PT" format=torchscript project="$EXPORT_DIR" name=temp
+TS_FILE="$EXPORT_DIR/temp/best.torchscript"
 
-# if [[ -f "$TS_FILE" ]]; then
-#   mv "$TS_FILE" "$MODEL_OUT_DIR/"
-#   rm -rf "$EXPORT_DIR"
-# fi
+if [[ -f "$TS_FILE" ]]; then
+  mv "$TS_FILE" "$MODEL_OUT_DIR/"
+  rm -rf "$EXPORT_DIR"
+fi
 
-# echo "Weights saved to $MODEL_OUT_DIR/"
+echo "Weights saved to $MODEL_OUT_DIR/"

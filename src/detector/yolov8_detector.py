@@ -15,8 +15,8 @@ from src.detector.utils import show_masks_on_image
 
 load_dotenv()
 
-SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD'), 0.3)
-CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD'), 0.6)
+SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD', 0.3))
+CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD', 0.6))
 DEBUG_DIR = Path(os.getenv('DEBUG_DIR', './debug'))
 
 def _solidify_mask(mask: np.ndarray,
@@ -128,7 +128,7 @@ def detect_and_segment(image,
 if __name__ == "__main__":
     seg_model = YOLO("./models/foodseg/best.pt")
     clas_model = YOLO("./models/food101/best.pt")
-    image = cv2.imread("./data/chicken_test.png")
+    image = cv2.imread("./data/last.jpg")
 
     items = detect_and_segment(image, seg_model, clas_model, DEBUG_DIR)
     print(f"Detected {len(items)} items:")
@@ -136,6 +136,7 @@ if __name__ == "__main__":
     for mask, label, box in items:
         print(f"Label: {label}, Box: {box}")
 
+    show_masks_on_image(DEBUG_DIR / f"mask_overlay_yolo.png", image, items)
 
 
 ### NOTE ###
