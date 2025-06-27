@@ -1,84 +1,202 @@
 """
 This module provides functions to estimate the pixel density of a credit card in an image.
 """
+from __future__ import annotations
+
 import os
+import ast
+from typing import Optional, Tuple
+
 import cv2
 import numpy as np
+from pathlib import Path
 from dotenv import load_dotenv
-
 
 load_dotenv()
 
-# Size of an ID-1 card (ISO/IEC 7810)
-CARD_WIDTH_CM  = float(os.getenv("CARD_WIDTH_CM", 8.56))
-CARD_HEIGHT_CM = float(os.getenv("CARD_HEIGHT_CM", 5.398)) 
-ASPECT = CARD_WIDTH_CM / CARD_HEIGHT_CM # ≈ 1.586
+CARD_WIDTH_CM   = float(os.getenv("CARD_WIDTH_CM", 8.56))
+CARD_HEIGHT_CM  = float(os.getenv("CARD_HEIGHT_CM", 5.398))
+CARD_ASPECT     = CARD_WIDTH_CM / CARD_HEIGHT_CM # ≈ 1.586
 
-def _largest_card_like_shape(contours: list[np.ndarray], aspect:float=ASPECT, tolerance:float=0.3) -> tuple[float, list]:
+BRIGHT_L        = int(os.getenv('BRIGHT_L', 120))
+DARK_L          = int(os.getenv('BRIGHT_L', 80))
+
+FRAME_MARGIN    = int(os.getenv('FRAME_MARGIN', 3))  
+ASP_TOL         = float(os.getenv('ASP_TOL', 0.30)) 
+MIN_AREA_FRAC   = float(os.getenv('MIN_AREA_FRAC', 0.005))
+MAX_AREA_FRAC   = float(os.getenv('MAX_AREA_FRAC', 0.30))        
+POLY_EPS_FRAC   = float(os.getenv('POLY_EPS_FRAC', 0.02))
+
+DEBUG_DIR       = Path(os.getenv("DEBUG_DIR", './debug'))
+
+
+def _lab_masks_dual(bgr: np.ndarray) -> list[np.ndarray]:
     """
-    Find the contour that:
-      • approximates to 4 vertices
-      • has aspect ratio ≈ CARD
-      • has the largest area
-    Returns (width_px, pts)  or (0, None)
+    Return two candidate masks:
+        index 0 → low-chroma (white / grey cards)
+        index 1 → high-chroma (coloured cards)
+    Both are morph-closed and restricted to bright pixels (L > 120).
     """
-    best_w = 0
-    best_pts = None
+    lab   = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    a, b_ = lab[..., 1].astype(np.float32), lab[..., 2].astype(np.float32)
+    chroma = cv2.magnitude(a, b_).astype(np.uint8)
+
+    # Otsu finds a threshold splitting low vs high chroma
+    _, thr = cv2.threshold(chroma, 0, 255,
+                           cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+
+    L = lab[..., 0]
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
+
+    # low-chroma mask
+    low = thr.copy()
+    low[L < BRIGHT_L] = 0
+    low = cv2.morphologyEx(low, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    low_dark = thr.copy()
+    low_dark[(L < DARK_L) | (L > BRIGHT_L)] = 0
+    low_dark = cv2.morphologyEx(low_dark, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    # high-chroma mask (invert)
+    high = cv2.bitwise_not(thr)
+    high[L < 120] = 0
+    high = cv2.morphologyEx(high, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    return [low, low_dark, high]
+
+def _contours(img_bin: np.ndarray):
+    return cv2.findContours(img_bin, cv2.RETR_EXTERNAL,
+                            cv2.CHAIN_APPROX_SIMPLE)[0]
+
+def _touches_border(x: int, y: int, w: int, h: int,
+                    img_w: int, img_h: int,
+                    margin: int = FRAME_MARGIN) -> bool:
+    """True if bounding-box lies on (or beyond) image frame."""
+    return (
+        x <= margin
+        or y <= margin
+        or x + w >= img_w - margin
+        or y + h >= img_h - margin
+    )
+
+def _card_candidate(contours: list[np.ndarray],img_w: int,img_h: int,
+                    aspect: float = CARD_ASPECT,asp_tol: float = ASP_TOL,
+                    ) -> Optional[np.ndarray]:
+    """Return the single contour that best matches credit-card heuristics."""
+    img_area = img_w * img_h
+    best_cnt: Optional[np.ndarray] = None
+    best_area = 0.0
+
     for cnt in contours:
-        # Polygonal approximation
-        peri = cv2.arcLength(cnt, True) # perimeter
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True) # estimate the vertices 
-        if len(approx) != 4:
-            continue  # not a rectangle
-        # bounding rect (rotated)
-        rect = cv2.minAreaRect(cnt) # find rectangle (center, (w,h), angle)
-        w, h = sorted(rect[1])        
-        if w == 0 or h == 0:
-            continue
-        asp = h / w                
-        if not (1-tolerance)*aspect < asp < (1+tolerance)*aspect:
+        # reject outer frame contours
+        x, y, w, h = cv2.boundingRect(cnt)
+        if _touches_border(x, y, w, h, img_w, img_h):
             continue
 
-        area = w * h
-        if area > best_w * h: # pick largest by width
-            best_w = h                 
-            best_pts = approx.reshape(-1, 2)
+        # rotated rectangle metrics
+        _, (rw, rh), _ = cv2.minAreaRect(cnt)
+        if rw == 0 or rh == 0:
+            continue
 
-    return best_w, best_pts
+        rect_area = rw * rh
+        if not (MIN_AREA_FRAC * img_area < rect_area < MAX_AREA_FRAC * img_area):
+            continue
+        
+        asp = max(rw, rh) / min(rw, rh)
+        if not (1 - asp_tol) * aspect < asp < (1 + asp_tol) * aspect:
+            continue
 
-def px_per_cm_from_card(image:np.ndarray) -> float | None:
+        # Not used in this version
+        # peri   = cv2.arcLength(cnt, True)
+        # approx = cv2.approxPolyDP(cnt, POLY_EPS_FRAC * peri, True)
+        # if len(approx) != 4:
+        #     continue
+
+        # keep the largest surviving rectangle
+        if rect_area > best_area:        
+            best_area = rect_area
+            best_cnt  = cnt
+
+    return best_cnt
+
+def _edge_preprocess(bgr: np.ndarray) -> np.ndarray:
+    """Return thickened edge map later for contour search."""
+    gray   = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    gray   = cv2.createCLAHE(4.0, (8, 8)).apply(gray)
+    gray   = cv2.bilateralFilter(gray, 7, 75, 75)
+
+    edges  = cv2.Canny(gray, 20, 120)
+    edges  = cv2.dilate(edges, None, 1)
+
+    # thicken/close gaps so card interior can be measured
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+def px_per_cm_from_card(image: np.ndarray,
+                        debug_dir: Optional[Path] = None,
+                        target_hw: Tuple[int, int] = (480, 640)) -> Optional[float]:
     """
-    This function estimates the pixels per centimeter from a credit card in the image.
+    Detect card and return pixels per centimetre (long edge).
+    Returns None if nothing plausible is found.
     """
-    gray   = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) 
-    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-    gray  = clahe.apply(gray)
-    gray  = cv2.bilateralFilter(gray, d=7, sigmaColor=75, sigmaSpace=75)
-    edges = cv2.Canny(gray, 20, 120)
-    edges = cv2.dilate(edges, None, iterations=1)
+    # YOLO usually resizes, need to take this into account
+    try:
+        raw = ast.literal_eval(os.getenv('HEIGHT_WIDTH_YOLO_TUPLE', ''))
+        if isinstance(raw, (tuple, list)) and len(raw) == 2:
+            targ_h, targ_w = map(int, raw)
+        else:
+            targ_h, targ_w = target_hw
+    except (ValueError, SyntaxError):
+        targ_h, targ_w = target_hw
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL,
-                                   cv2.CHAIN_APPROX_SIMPLE)
-    
-    long_px, _ = _largest_card_like_shape(contours)
-    print(f"Found card-like shape with long edge: {long_px} px")
+    img_h, img_w   = image.shape[:2]
 
-    if long_px == 0:
-        return None
+    if (img_h, img_w) != (targ_h, targ_w):
+        image_rs = cv2.resize(image, (targ_w, targ_h),
+                              interpolation=cv2.INTER_AREA)
+    else:
+        image_rs = image 
 
-    return CARD_WIDTH_CM / long_px
+    H, W = image_rs.shape[:2]
 
+    if debug_dir:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
+    for i, mask in enumerate(_lab_masks_dual(image_rs)):
+        if debug_dir:
+            cv2.imwrite(str(debug_dir / f"card_mask_{i}.png"), mask)
+        card = _card_candidate(_contours(mask), W, H)
+        if card is not None:
+            if debug_dir:
+                dbg = image_rs.copy()
+                cv2.drawContours(dbg, [card], -1, (0, 255, 0), 2)
+                cv2.imwrite(str(debug_dir / f"card_contour_mask_{i}.png"), dbg)
+            _, (rw, rh), _ = cv2.minAreaRect(card)
+            return max(rw, rh) / CARD_WIDTH_CM
+        
+    edges = _edge_preprocess(image_rs)
+    if debug_dir:
+        cv2.imwrite(str(debug_dir / "card_edge_mask.png"), edges)
+    card  = _card_candidate(_contours(edges), W, H)
+    if card is not None:
+        if debug_dir:
+            dbg = image_rs.copy()
+            cv2.drawContours(dbg, [card], -1, (255, 0, 0), 2)
+            cv2.imwrite(str(debug_dir / "card_contour_edge.png"), dbg)
+        _, (rw, rh), _ = cv2.minAreaRect(card)
+        return max(rw, rh) / CARD_WIDTH_CM
+
+    print("No credit-card contour found.")
+    return None
 
 if __name__ == "__main__":
-    img_path = "./data/creditcard.png"
-    image = cv2.imread(img_path)
+    img   = cv2.imread("./data/test4.jpg")
+    ppcm  = px_per_cm_from_card(img, DEBUG_DIR)
+    print("pixels / cm:", ppcm)
 
-    if image is None:
-        print("Could not read the image.")
-    else:
-        px_per_cm = px_per_cm_from_card(image)
-        if px_per_cm is not None:
-            print(f"Pixels per centimeter: {px_per_cm:.2f}")
-        else:
-            print("No credit card-like shape found in the image.")
+
+
+
+
+
 
