@@ -112,11 +112,10 @@ def detect_and_segment(image,
         if seg_label in class_remap:
             final_label = class_remap[seg_label]
         else:
-            cls_label, cls_prob = _run_classifier(clas_model, crop)
+            cls_label, cls_prob = _run_classifier(clas_model, crop) # need to work on this (need better dataset)
             final_label = cls_label if cls_prob >= cls_confidence else seg_label
             class_remap[seg_label] = final_label
 
-        print(seg_label, "changed to", final_label)
         output.append((solid, final_label, [x, y, x + w, y + h])) # x1, y1 x2, y2  
 
     if debug_dir:
