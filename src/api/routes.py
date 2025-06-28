@@ -1,10 +1,12 @@
 """
 This script defines the routes for the Nutritional Facts API.
 """
+import os
 from typing import List, Dict
 import cv2, numpy as np
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from src.api.dependencies import get_usda_client, get_segment_model, get_classification_model       
 from src.nutrition.usda_client import USDAClient
@@ -12,8 +14,11 @@ from src.detector.yolov8_detector import detect_and_segment
 from src.scaling.credit_card_scaler import px_per_cm_from_card
 from src.scaling.grams_from_mask import grams_from_items
 from src.scaling.utils import mask_to_png_b64
-from src.scaling.densities import DENSITY_TABLE             
+from src.scaling.densities import DENSITY_TABLE  
 
+load_dotenv()
+
+USE_CLS_MODEL = os.getenv('USE_CLAS_MODEL', False)
 router = APIRouter()
 
 class MaskOut(BaseModel):
@@ -44,6 +49,9 @@ async def predict(
         raise HTTPException(415, "Could not decode image")
 
     scale  = px_per_cm_from_card(bgr) or 1.0
+    if not USE_CLS_MODEL:
+        clas_model = seg_model
+        
     items  = detect_and_segment(bgr, seg_model, clas_model) # can have more than one same label
     grams_per_label = grams_from_items(items, scale, DENSITY_TABLE) # unique keys
     by_label: dict[str, dict] = {} # label -> dict(mask, box, grams)
