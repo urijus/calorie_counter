@@ -1,9 +1,9 @@
 """
 This script contains the necessary methods to estimate the grams of a certain item from a mask.
 """
+from collections import defaultdict
 from functools import reduce
 from typing import Dict, List, Tuple
-from collections import defaultdict
 
 import numpy as np
 
@@ -67,16 +67,14 @@ if __name__ == "__main__":
     from src.detector.yolov8_detector import detect_and_segment
     from src.scaling.credit_card_scaler import px_per_cm_from_card
 
-    model = YOLO("./models/foodseg/best.pt")
-    image_path = "./data/last.jpg" 
+    seg_model = YOLO("./models/foodseg/best.pt")
+    cls_model = YOLO("./models/food101/best.pt")
+    image_path = "./data/banana.jpg" 
     image = cv2.imread(image_path)
 
-    items = detect_and_segment(image, model)
+    items = detect_and_segment(image, seg_model, cls_model)
     scale = px_per_cm_from_card(image)
     weights = grams_from_items(items, scale, DENSITY_TABLE)
-
-    from src.detector.utils import show_masks_on_image
-    show_masks_on_image("output.png", image, items)
 
     
 

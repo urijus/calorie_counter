@@ -201,3 +201,4 @@ cython_debug/
 
 # Files
 /config/foodseg103.yaml
+response.json

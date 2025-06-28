@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 from ultralytics import YOLO
 
 from src.detector.utils import show_masks_on_image
@@ -128,7 +128,7 @@ def detect_and_segment(image,
 if __name__ == "__main__":
     seg_model = YOLO("./models/foodseg/best.pt")
     clas_model = YOLO("./models/food101/best.pt")
-    image = cv2.imread("./data/last.jpg")
+    image = cv2.imread("./data/banana.jpg")
 
     items = detect_and_segment(image, seg_model, clas_model, DEBUG_DIR)
     print(f"Detected {len(items)} items:")

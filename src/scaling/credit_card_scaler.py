@@ -190,7 +190,7 @@ def px_per_cm_from_card(image: np.ndarray,
     return None
 
 if __name__ == "__main__":
-    img   = cv2.imread("./data/test4.jpg")
+    img   = cv2.imread("./data/banana.jpg")
     ppcm  = px_per_cm_from_card(img, DEBUG_DIR)
     print("pixels / cm:", ppcm)
 
