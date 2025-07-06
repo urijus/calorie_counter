@@ -6,7 +6,6 @@ from typing import List, Dict
 import cv2, numpy as np
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 from src.api.dependencies import get_usda_client, get_segment_model, get_classification_model       
 from src.nutrition.usda_client import USDAClient
@@ -16,9 +15,7 @@ from src.scaling.grams_from_mask import grams_from_items
 from src.scaling.utils import mask_to_png_b64
 from src.scaling.densities import DENSITY_TABLE  
 
-load_dotenv()
 
-USE_CLS_MODEL = os.getenv('USE_CLAS_MODEL', False)
 router = APIRouter()
 
 class MaskOut(BaseModel):

@@ -17,6 +17,7 @@ load_dotenv()
 
 SEG_CONFIDENCE = float(os.getenv('SEG_CONFIDENCE_THRESHOLD', 0.3))
 CLS_CONFIDENCE = float(os.getenv('CLAS_CONFIDENCE_THRESHOLD', 0.6))
+USE_CLS_MODEL = os.getenv('USE_CLAS_MODEL', False)
 DEBUG_DIR = Path(os.getenv('DEBUG_DIR', './debug'))
 
 def _solidify_mask(mask: np.ndarray,
@@ -111,10 +112,15 @@ def detect_and_segment(image,
 
         if seg_label in class_remap:
             final_label = class_remap[seg_label]
+        elif USE_CLS_MODEL:
+            cls_label, cls_prob = _run_classifier(clas_model, crop)
+            if cls_prob >= cls_confidence:
+                final_label = cls_label
+                class_remap[seg_label] = cls_label
+            else:
+                final_label = seg_label
         else:
-            cls_label, cls_prob = _run_classifier(clas_model, crop) # need to work on this (need better dataset)
-            final_label = cls_label if cls_prob >= cls_confidence else seg_label
-            class_remap[seg_label] = final_label
+            final_label = seg_label
 
         output.append((solid, final_label, [x, y, x + w, y + h])) # x1, y1 x2, y2  
 
